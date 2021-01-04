@@ -1,0 +1,14 @@
+[package]
+name = "nbmarch"
+version = "0.1.0"
+authors = ["Ryan <rnleach@users.noreply.github.com>"]
+description = "A library for retrieving NBM 1D text files and cacheing them locally."
+licencse = "MIT"
+publish = false
+
+edition = "2018"
+
+[profile.release]
+lto = "fat"
+
+[dependencies]

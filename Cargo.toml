@@ -12,3 +12,5 @@ edition = "2018"
 lto = "fat"
 
 [dependencies]
+chrono = "0.4"
+rusqlite = "0.24"

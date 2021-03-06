@@ -3,7 +3,6 @@ name = "nbmarch"
 version = "0.1.0"
 authors = ["Ryan <rnleach@users.noreply.github.com>"]
 description = "A library for retrieving NBM 1D text files and cacheing them locally."
-licencse = "MIT"
 publish = false
 
 edition = "2018"
@@ -12,5 +11,12 @@ edition = "2018"
 lto = "fat"
 
 [dependencies]
-chrono = "0.4"
-rusqlite = "0.24"
+chrono = "^0.4"
+csv = "^1.1"
+dirs = "^3.0.1"
+filedb = {version="=0.1.0", git="https://github.com/rnleach/filedb.git", tag="v0.1.0"}
+reqwest = {version = "^0.11.0", features=["blocking"]}
+rusqlite = "^0.24"
+
+[dev-dependencies]
+tempfile = "^3.2.0"

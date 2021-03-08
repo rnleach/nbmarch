@@ -6,7 +6,6 @@
  *                                         Public API
  * --------------------------------------------------------------------------------------------- */
 pub use crate::error::Error;
-pub use crate::nbm_data::NBMData;
 pub use crate::nbm_store::NBMStore;
 pub use crate::site_validation::{SiteInfo, SiteValidation};
 /* ------------------------------------------------------------------------------------------------
@@ -14,6 +13,5 @@ pub use crate::site_validation::{SiteInfo, SiteValidation};
  * --------------------------------------------------------------------------------------------- */
 mod download;
 mod error;
-mod nbm_data;
 mod nbm_store;
 mod site_validation;

@@ -1,6 +1,6 @@
 use chrono;
 
-use crate::site_validation::SiteInfo;
+use crate::SiteInfo;
 
 /// A general error type.
 #[derive(Debug)]
@@ -11,6 +11,9 @@ pub enum Error {
     LocalStore(filedb::Error),
     /// Any other error is passed up this way.
     Internal(Box<dyn std::error::Error>),
+
+    /// The NBMData doesn't have a matching column
+    NBMData(nbm_tools::Error),
 
     /// No data for that initialization time is available for any location.
     InitializationTimeNotAvailable(chrono::NaiveDateTime),
@@ -36,6 +39,7 @@ impl std::fmt::Display for Error {
             Self::General(msg) => write!(f, "{}", msg),
             Self::LocalStore(err) => write!(f, "filedb err: {}", err),
             Self::Internal(err) => write!(f, "{}", err),
+            Self::NBMData(err) => write!(f, "NBMData err: {}", err),
             Self::NoMatch(requested_site) => {
                 write!(f, "No match found for site {}", requested_site)
             }
@@ -93,8 +97,15 @@ impl From<reqwest::Error> for Error {
     }
 }
 
+impl From<nbm_tools::Error> for Error {
+    fn from(err: nbm_tools::Error) -> Self {
+        Self::NBMData(err)
+    }
+}
+
 impl From<csv::Error> for Error {
     fn from(err: csv::Error) -> Self {
         Self::Internal(err.into())
     }
 }
+

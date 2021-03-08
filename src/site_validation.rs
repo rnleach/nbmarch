@@ -18,7 +18,7 @@ pub struct SiteValidation {
 
 impl SiteValidation {
     /// Create a new SiteValidation object.
-    pub fn new(site: SiteInfo, initialization_time: chrono::NaiveDateTime) -> Self {
+    pub(crate) fn new(site: SiteInfo, initialization_time: chrono::NaiveDateTime) -> Self {
         Self {
             site,
             initialization_time,
@@ -32,7 +32,7 @@ impl SiteValidation {
 }
 
 /// Validate a site against a "locations.csv" file.
-pub(crate) fn validate(site: &str, locations_str: &str) -> Result<SiteInfo, crate::error::Error> {
+pub(crate) fn validate(site: &str, locations_str: &str) -> Result<SiteInfo, crate::Error> {
     let loc_db = rusqlite::Connection::open_in_memory()?;
     build_locations_database(&loc_db, locations_str)?;
 
@@ -47,9 +47,9 @@ pub(crate) fn validate(site: &str, locations_str: &str) -> Result<SiteInfo, crat
     dbg!(matches.len());
 
     if matches.is_empty() {
-        Err(crate::error::Error::NoMatch(site.to_owned()))
+        Err(crate::Error::NoMatch(site.to_owned()))
     } else if matches.len() > 1 {
-        Err(crate::error::Error::AmbiguousSite { matches })
+        Err(crate::Error::AmbiguousSite { matches })
     } else {
         Ok(matches.into_iter().next().unwrap())
     }
@@ -58,7 +58,7 @@ pub(crate) fn validate(site: &str, locations_str: &str) -> Result<SiteInfo, crat
 fn build_locations_database(
     conn: &rusqlite::Connection,
     locations_str: &str,
-) -> Result<(), crate::error::Error> {
+) -> Result<(), crate::Error> {
     const INIT_LOCATIONS_DB: &'static str = r#"
       CREATE TABLE locations (                
         id    TEXT NOT NULL,                 
@@ -79,22 +79,18 @@ fn build_locations_database(
 
     let mut rdr = csv::Reader::from_reader(locations_str.as_bytes());
 
-    for rec in rdr
-        .records()
-        .filter_map(|res| res.ok())
-    {
-
+    for rec in rdr.records().filter_map(|res| res.ok()) {
         if let (Some(id), Some(name), Some(state_prov), Some(lat_str), Some(lon_str)) =
             (rec.get(0), rec.get(1), rec.get(2), rec.get(3), rec.get(4))
         {
             let latitude: f64 = if let Ok(val) = lat_str.parse() {
-                val 
+                val
             } else {
                 continue;
             };
 
             let longitude: f64 = if let Ok(val) = lon_str.parse() {
-                val 
+                val
             } else {
                 continue;
             };
@@ -113,7 +109,7 @@ fn build_locations_database(
 fn find_exact_case_insensitive_match(
     conn: &rusqlite::Connection,
     site: &str,
-) -> Result<Option<SiteInfo>, crate::error::Error> {
+) -> Result<Option<SiteInfo>, crate::Error> {
     let query_exact_case_insensitive_match = format!(
         "SELECT id, name, state, lat, lon FROM locations WHERE id = '{}'",
         site
@@ -148,7 +144,7 @@ fn find_exact_case_insensitive_match(
 fn find_similar_sites(
     conn: &rusqlite::Connection,
     site: &str,
-) -> Result<Vec<SiteInfo>, crate::error::Error> {
+) -> Result<Vec<SiteInfo>, crate::Error> {
     let query_similar_sites = format!(
         "SELECT id, name, state, lat, lon FROM locations WHERE id LIKE '%{}%' OR name LIKE '%{}%' OR state LIKE '{}'",
         site, site, site
@@ -192,25 +188,6 @@ pub struct SiteInfo {
     pub latitude: f32,
     /// The longitude of the location.
     pub longitude: f32,
-}
-
-impl SiteInfo {
-    /// Create a new SiteInfo object.
-    pub fn new(
-        name: String,
-        id: String,
-        latitude: f32,
-        longitude: f32,
-        state_prov: String,
-    ) -> Self {
-        Self {
-            name,
-            id,
-            latitude,
-            longitude,
-            state_prov,
-        }
-    }
 }
 
 impl Display for SiteInfo {

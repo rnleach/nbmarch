@@ -3,7 +3,7 @@ use chrono::{Datelike, Timelike};
 pub fn download_file(
     fname: &str,
     init_time: chrono::NaiveDateTime,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String, crate::Error> {
     let url = build_download_url(fname, init_time);
 
     Ok(reqwest::blocking::get(&url)?.text()?)

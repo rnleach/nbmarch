@@ -1,5 +1,5 @@
+use std::str::FromStr;
 use chrono::{Datelike, Timelike};
-use std::convert::TryFrom;
 
 /// The interface to our storage for NBM 1D text files.
 ///
@@ -19,12 +19,12 @@ impl NBMStore {
     /// path will be chosen in the user's home directory.
     pub fn connect<'a, OP: Into<Option<&'a std::path::Path>>>(
         path: OP,
-    ) -> Result<Self, crate::error::Error> {
+    ) -> Result<Self, crate::Error> {
         let path: Option<&std::path::Path> = path.into();
 
         let path_buf: std::path::PathBuf = match path {
             Some(p) => std::path::PathBuf::from(p),
-            None => Self::default_local_store_path().map_err(crate::error::Error::Internal)?,
+            None => Self::default_local_store_path()?,
         };
 
         let local_store = filedb::FileDB::connect(&path_buf)?;
@@ -42,13 +42,10 @@ impl NBMStore {
         &self,
         site: &str,
         request_time: chrono::NaiveDateTime,
-    ) -> Result<crate::site_validation::SiteValidation, crate::error::Error> {
+    ) -> Result<crate::SiteValidation, crate::Error> {
         let init_time = calculate_next_most_recent_nmb_initialization_time(request_time);
 
-        let locations_str_bytes = match self.local_store.retrieve_file("locations.csv", init_time) {
-            Ok(opt) => opt,
-            Err(_) => None,
-        };
+        let locations_str_bytes = self.local_store.retrieve_file("locations.csv", init_time)?;
 
         let locations_str = if let Some(bytes) = locations_str_bytes {
             Some(String::from_utf8(bytes)?)
@@ -64,11 +61,11 @@ impl NBMStore {
             }
         };
 
-        let locations_str = locations_str
-            .ok_or_else(|| crate::error::Error::InitializationTimeNotAvailable(init_time))?;
+        let locations_str =
+            locations_str.ok_or_else(|| crate::Error::InitializationTimeNotAvailable(init_time))?;
 
         crate::site_validation::validate(site, &locations_str)
-            .map(|site_info| crate::site_validation::SiteValidation::new(site_info, init_time))
+            .map(|site_info| crate::SiteValidation::new(site_info, init_time))
     }
 
     /// Validate a request, but keep going back in time until an available initialization time
@@ -85,7 +82,7 @@ impl NBMStore {
         &self,
         site: &str,
         request_time: chrono::NaiveDateTime,
-    ) -> Result<crate::site_validation::SiteValidation, crate::error::Error> {
+    ) -> Result<crate::SiteValidation, crate::Error> {
         let mut attempts_left = 20_i32;
         let mut attempt_request_time = request_time;
 
@@ -93,7 +90,7 @@ impl NBMStore {
             let validation = self.validate_request(site, attempt_request_time);
 
             match &validation {
-                Err(crate::error::Error::InitializationTimeNotAvailable(init_time)) => {
+                Err(crate::Error::InitializationTimeNotAvailable(init_time)) => {
                     attempt_request_time = *init_time - chrono::Duration::hours(1);
                 }
                 _ => return validation,
@@ -109,8 +106,8 @@ impl NBMStore {
     /// Once a validation has been completed, it can be used to load a text file.
     pub fn retrieve(
         &self,
-        validation: &crate::site_validation::SiteValidation,
-    ) -> Result<crate::nbm_data::NBMData, Box<dyn std::error::Error>> {
+        validation: crate::SiteValidation,
+    ) -> Result<nbm_tools::NBMData, crate::Error> {
         let file_name = validation.file_name();
 
         let data_str = self
@@ -135,10 +132,10 @@ impl NBMStore {
             }
         }?;
 
-        Ok(crate::NBMData::try_from(data_str.as_ref())?)
+        Ok(nbm_tools::NBMData::from_str(data_str.as_ref())?)
     }
 
-    fn default_local_store_path() -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+    fn default_local_store_path() -> Result<std::path::PathBuf, crate::Error> {
         dirs::data_dir()
             .map(|mut p| {
                 p.push("nbm-report");
@@ -146,8 +143,7 @@ impl NBMStore {
                 p
             })
             .ok_or_else(|| {
-                crate::error::Error::general_error("Couldn't find default local store".to_owned())
-                    .into()
+                crate::Error::general_error("Couldn't find default local store".to_owned()).into()
             })
     }
 }
@@ -169,4 +165,81 @@ fn calculate_next_most_recent_nmb_initialization_time(
     };
 
     chrono::NaiveDate::from_ymd(year, month, day).and_hms(hour, 0, 0) - delta
+}
+
+#[cfg(test)]
+mod test {
+    use crate as nbmarch;
+
+    struct TestArchive {
+        _temp_db_file: tempfile::NamedTempFile,
+        arch: nbmarch::NBMStore,
+    }
+
+    fn create_test_archive() -> Result<TestArchive, Box<dyn std::error::Error>> {
+        let temp_db_file = tempfile::NamedTempFile::new()?;
+        let db_fname = temp_db_file.path();
+        let arch = nbmarch::NBMStore::connect(db_fname)?;
+
+        Ok(TestArchive {
+            _temp_db_file: temp_db_file,
+            arch,
+        })
+    }
+
+    #[test]
+    fn test_connect() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_db_file = tempfile::NamedTempFile::new()?;
+        let db_fname = temp_db_file.path();
+
+        let _arch = nbmarch::NBMStore::connect(db_fname)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_simple_validation() -> Result<(), Box<dyn std::error::Error>> {
+        let arch = &create_test_archive()?.arch;
+
+        let request_time = chrono::NaiveDate::from_ymd(2021, 2, 28).and_hms(15, 15, 0);
+        let valid_time = chrono::NaiveDate::from_ymd(2021, 2, 28).and_hms(13, 0, 0);
+
+        let validation = arch.validate_request("KMSO", request_time)?;
+        assert_eq!(&validation.site.id, "KMSO");
+        assert_eq!(&validation.file_name(), "KMSO.csv");
+        assert_eq!(&validation.site.name, "MISSOULA");
+        assert_eq!(validation.initialization_time, valid_time);
+
+        let validation = arch.validate_request("missoula", request_time)?;
+        assert_eq!(&validation.site.id, "KMSO");
+        assert_eq!(&validation.file_name(), "KMSO.csv");
+        assert_eq!(&validation.site.name, "MISSOULA");
+        assert_eq!(validation.initialization_time, valid_time);
+
+        let validation = arch.validate_request("logan", valid_time);
+        assert!(validation.is_err());
+        match validation {
+            Err(nbmarch::Error::AmbiguousSite { .. }) => {}
+            _ => panic!("Invalid error, should be ambiguous site"),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_retrieve() -> Result<(), Box<dyn std::error::Error>> {
+        let arch = &create_test_archive()?.arch;
+
+        let request_time = chrono::NaiveDate::from_ymd(2021, 2, 28).and_hms(15, 15, 0);
+        let valid_time = chrono::NaiveDate::from_ymd(2021, 2, 28).and_hms(13, 0, 0);
+
+        let validation = arch.validate_request("KMSO", request_time)?;
+        assert_eq!(&validation.site.id, "KMSO");
+        assert_eq!(&validation.site.name, "MISSOULA");
+        assert_eq!(validation.initialization_time, valid_time);
+
+        let _nbm = arch.retrieve(validation)?;
+
+        Ok(())
+    }
 }
